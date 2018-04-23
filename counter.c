@@ -12,16 +12,15 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
-#include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/init.h>
-#include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/notifier.h>
+#include "counter.h"
 
 static struct timer_list counter_timer;
 static int count;
+
+/* Define the notification callback */
+static ATOMIC_NOTIFIER_HEAD(counter_notifier_list);
 
 /*
  * counter_timer_callback()
@@ -29,19 +28,24 @@ static int count;
  */
 static void counter_timer_callback(unsigned long data)
 {
-	printk(KERN_INFO "count: %d\n", count++);
-
+	count++;
 	counter_timer.expires = jiffies + HZ;
 	add_timer(&counter_timer);
 
 	/*
-	 * TODO: Call the notification callback with the right flag
+	 * Call the notification callback with the right flag
 	 * (COUNTER_EVEN or COUNTER_ODD). 
 	 */
+	if ((count % 2) != 0) {
+		atomic_notifier_call_chain(&counter_notifier_list,
+                                           COUNTER_ODD_EVENT,
+                                           (void *)count);
+	} else {
+		atomic_notifier_call_chain(&counter_notifier_list,
+                                           COUNTER_EVEN_EVENT,
+                                           (void *)count);
+	}
 }
-
-/* Define the notification callback */
-static ATOMIC_NOTIFIER_HEAD(counter_notifier_list);
 
 /*
  * counter_notifier_register()
@@ -50,7 +54,7 @@ void counter_notifier_register(struct notifier_block *nb)
 {
 	atomic_notifier_chain_register(&counter_notifier_list, nb);
 }
-EXPORT_SYMBOL(counter_notifier_register);
+EXPORT_SYMBOL_GPL(counter_notifier_register);
 
 /*
  * counter_notifier_unregister()
@@ -59,7 +63,7 @@ void counter_notifier_unregister(struct notifier_block *nb)
 {
 	atomic_notifier_chain_unregister(&counter_notifier_list, nb);
 }
-EXPORT_SYMBOL(counter_notifier_unregister);
+EXPORT_SYMBOL_GPL(counter_notifier_unregister);
 
 /*
  * counter_init()
@@ -77,12 +81,6 @@ static int counter_init(void)
 	counter_timer.expires = jiffies + HZ;
 	add_timer(&counter_timer);
 
-	/*
-	 * TODO: Implement these function in their own modules.
-	 */
-	odd_handler_init();
-	even_handler_init();
-
 	return 0;
 }
 
@@ -97,12 +95,9 @@ static void counter_exit(void)
 	 * Delete the timer.
 	 */
 	del_timer_sync(&counter_timer);
-
-	/*
-	 * TODO: Implement these function in their own modules.
-	 */
-	even_handler_exit();
-	odd_handler_exit();
 }
 module_init(counter_init);
 module_exit(counter_exit);
+
+MODULE_DESCRIPTION("Counter Module");
+MODULE_LICENSE("Dual BSD/GPL");
